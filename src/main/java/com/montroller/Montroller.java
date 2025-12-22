@@ -20,6 +20,5 @@ public class Montroller implements ModInitializer {
 		// Proceed with mild caution.
 
 		LOGGER.info("Hello Fabric world!");
-		ControllerManager.start();
 	}
 }

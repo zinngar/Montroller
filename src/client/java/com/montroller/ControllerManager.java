@@ -63,7 +63,7 @@ public class ControllerManager {
     private static void populateKeyBindings() {
         MinecraftClient client = MinecraftClient.getInstance();
         for (KeyBinding keyBinding : client.options.allKeys) {
-            keyBindings.put(keyBinding.getTranslationKey(), keyBinding);
+            keyBindings.put(keyBinding.getId(), keyBinding);
         }
     }
 }

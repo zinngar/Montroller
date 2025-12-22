@@ -28,7 +28,7 @@ public class ModMenuIntegration implements ModMenuApi {
             ConfigEntryBuilder entryBuilder = builder.entryBuilder();
 
             String[] keyBindingIds = Arrays.stream(MinecraftClient.getInstance().options.allKeys)
-                    .map(KeyBinding::getTranslationKey)
+                    .map(KeyBinding::getId)
                     .collect(Collectors.toList()).toArray(new String[0]);
 
             // Add entries for each button
