@@ -1,0 +1,35 @@
+{
+	"schemaVersion": 1,
+	"id": "montroller",
+	"version": "${version}",
+	"name": "Montroller",
+	"description": "An Xbox controller mod for Minecraft.",
+	"authors": [
+		"Zinngar"
+	],
+	"contact": {
+		"homepage": "https://github.com/zinngar/Montroller",
+		"sources": "https://github.com/zinngar/Montroller"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/montroller/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.montroller.Montroller"
+		],
+		"client": [
+			"com.montroller.MontrollerClient"
+		],
+		"modmenu": [
+			"com.montroller.ModMenuIntegration"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.18.2",
+		"minecraft": "~1.21.10",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"suggests": {}
+}
