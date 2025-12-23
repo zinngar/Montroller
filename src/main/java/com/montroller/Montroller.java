@@ -1,7 +1,7 @@
 package com.montroller;
 
 import net.fabricmc.api.ModInitializer;
-
+import org.libsdl.SDL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +19,6 @@ public class Montroller implements ModInitializer {
 		// However, some things (like resources) may still be uninitialized.
 		// Proceed with mild caution.
 
-		LOGGER.info("Hello Fabric world!");
+		Runtime.getRuntime().addShutdownHook(new Thread(SDL::SDL_Quit));
 	}
 }

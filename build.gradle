@@ -1,34 +1,28 @@
 plugins {
-	id 'fabric-loom' version "${loom_version}"
-	id 'maven-publish'
+    id 'fabric-loom' version '1.11-SNAPSHOT'
+    id 'java'
 }
 
 version = project.mod_version
 group = project.maven_group
-
-base {
-	archivesName = project.archives_base_name
-}
+archivesBaseName = project.archives_base_name
 
 repositories {
-	// Add repositories to retrieve artifacts from in here.
-	// You should only use this when depending on other mods because
-	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
-	// for more information about repositories.
+    mavenCentral()
+    maven { url "https://maven.fabricmc.net/" }
 	maven { url 'https://jitpack.io' }
 	maven {
         name = "Shedaniel"
         url = "https://maven.shedaniel.me/"
     }
     maven {
-        name = "Terraformers"
-        url = "https://maven.terraformersmc.com/releases/"
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
     }
 }
 
 loom {
-	splitEnvironmentSourceSets()
+    splitEnvironmentSourceSets()
 
 	mods {
 		"montroller" {
@@ -36,22 +30,19 @@ loom {
 			sourceSet sourceSets.client
 		}
 	}
-
 }
 
 dependencies {
-	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-	implementation 'com.github.StrikerX3:JXInput:1.0.0'
-	modImplementation "me.shedaniel.cloth:cloth-config-fabric:11.1.106"
-    modImplementation "com.terraformersmc:modmenu:13.0.3"
-	implementation 'com.google.code.gson:gson:2.10.1'
 
+	// Controller Dependencies
+	implementation 'uk.co.electronstudio.sdl2gdx:sdl2gdx:1.0.+'
+	modImplementation "me.shedaniel.cloth:cloth-config-fabric:20.0.149"
+    modImplementation "maven.modrinth:modmenu:16.0.0-rc.2"
+	implementation 'com.google.code.gson:gson:2.10.1'
 }
 
 processResources {

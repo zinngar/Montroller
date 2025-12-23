@@ -14,6 +14,8 @@ public class Config {
     private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private static Config instance;
     private Map<String, String> keyMappings = new HashMap<>();
+    private boolean gyroEnabled = false;
+    private float gyroSensitivity = 1.0f;
 
     private Config() {}
 
@@ -31,6 +33,8 @@ public class Config {
                 Config config = gson.fromJson(reader, Config.class);
                 if (config != null) {
                     this.keyMappings = config.keyMappings;
+                    this.gyroEnabled = config.gyroEnabled;
+                    this.gyroSensitivity = config.gyroSensitivity;
                 }
             } catch (IOException e) {
                 Montroller.LOGGER.error("Error loading config", e);
@@ -52,5 +56,21 @@ public class Config {
 
     public void setMapping(String button, String action) {
         keyMappings.put(button, action);
+    }
+
+    public boolean isGyroEnabled() {
+        return gyroEnabled;
+    }
+
+    public void setGyroEnabled(boolean gyroEnabled) {
+        this.gyroEnabled = gyroEnabled;
+    }
+
+    public float getGyroSensitivity() {
+        return gyroSensitivity;
+    }
+
+    public void setGyroSensitivity(float gyroSensitivity) {
+        this.gyroSensitivity = gyroSensitivity;
     }
 }
