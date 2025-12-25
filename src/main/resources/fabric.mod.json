@@ -3,7 +3,7 @@
 	"id": "montroller",
 	"version": "${version}",
 	"name": "Montroller",
-	"description": "An Xbox controller mod for Minecraft.",
+	"description": "A universal controller mod for Minecraft.",
 	"authors": [
 		"Zinngar"
 	],
@@ -13,7 +13,7 @@
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/montroller/icon.png",
-	"environment": "*",
+	"environment": "client",
 	"entrypoints": {
 		"main": [
 			"com.montroller.Montroller"
@@ -25,6 +25,9 @@
 			"com.montroller.ModMenuIntegration"
 		]
 	},
+	"mixins": [
+		"montroller.mixins.json"
+	],
 	"depends": {
 		"fabricloader": ">=0.17.2",
 		"minecraft": "~1.21.10",

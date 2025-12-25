@@ -1,5 +1,6 @@
 package com.montroller;
 
+import com.badlogic.gdx.controllers.Controller;
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
 import me.shedaniel.clothconfig2.api.ConfigBuilder;
@@ -8,12 +9,13 @@ import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.text.Text;
+import org.libsdl.SDL;
 import uk.co.electronstudio.sdl2gdx.SDL2Controller;
-import uk.co.electronstudio.sdl2gdx.SDL2ControllerManager;
+
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 public class ModMenuIntegration implements ModMenuApi {
 
@@ -21,46 +23,68 @@ public class ModMenuIntegration implements ModMenuApi {
     public ConfigScreenFactory<?> getModConfigScreenFactory() {
         return parent -> {
             Config config = Config.getInstance();
-            SDL2ControllerManager controllerManager = ControllerManager.getControllerManager();
-
             ConfigBuilder builder = ConfigBuilder.create()
                     .setParentScreen(parent)
-                    .setTitle(Text.of("Montroller Settings"))
-                    .setSavingRunnable(config::save);
+                    .setTitle(Text.of("Montroller Configuration"));
 
+            ConfigCategory generalCategory = builder.getOrCreateCategory(Text.of("General Settings"));
             ConfigEntryBuilder entryBuilder = builder.entryBuilder();
 
-            List<String> keyBindingIds = new ArrayList<>();
-            keyBindingIds.add("unbound");
-            keyBindingIds.addAll(Arrays.stream(MinecraftClient.getInstance().options.allKeys)
-                    .map(KeyBinding::getId)
-                    .collect(Collectors.toList()));
-
-            for (SDL2Controller controller : controllerManager.getControllers()) {
-                ConfigCategory category = builder.getOrCreateCategory(Text.of(controller.getName()));
-                for (int i = 0; i < controller.getNumButtons(); i++) {
-                    addButtonMapping(category, entryBuilder, controller.getButtonName(i), config, keyBindingIds.toArray(new String[0]));
-                }
-            }
+            generalCategory.addEntry(entryBuilder.startFloatField(Text.of("Left Stick Deadzone"), config.getLeftStickDeadzone())
+                    .setDefaultValue(0.25f)
+                    .setSaveConsumer(config::setLeftStickDeadzone)
+                    .build());
+            generalCategory.addEntry(entryBuilder.startFloatField(Text.of("Right Stick Deadzone"), config.getRightStickDeadzone())
+                    .setDefaultValue(0.25f)
+                    .setSaveConsumer(config::setRightStickDeadzone)
+                    .build());
+            generalCategory.addEntry(entryBuilder.startFloatField(Text.of("Right Stick Sensitivity"), config.getRightStickSensitivity())
+                    .setDefaultValue(1.0f)
+                    .setSaveConsumer(config::setRightStickSensitivity)
+                    .build());
 
             ConfigCategory gyroCategory = builder.getOrCreateCategory(Text.of("Gyro"));
             gyroCategory.addEntry(entryBuilder.startBooleanToggle(Text.of("Enable Gyro"), config.isGyroEnabled())
                     .setDefaultValue(false)
-                    .setSaveConsumer(newValue -> config.setGyroEnabled(newValue))
+                    .setSaveConsumer(config::setGyroEnabled)
                     .build());
-            gyroCategory.addEntry(entryBuilder.startIntSlider(Text.of("Gyro Sensitivity"), (int) (config.getGyroSensitivity() * 100), 1, 200)
-                    .setDefaultValue(100)
-                    .setSaveConsumer(newValue -> config.setGyroSensitivity(newValue / 100.0f))
+            gyroCategory.addEntry(entryBuilder.startFloatField(Text.of("Gyro Sensitivity"), config.getGyroSensitivity())
+                    .setDefaultValue(1.0f)
+                    .setSaveConsumer(config::setGyroSensitivity)
                     .build());
+
+
+            // Controller mappings
+            if (ControllerManager.getControllerManager() != null) {
+                Map<String, String> keyBindingNames = new HashMap<>();
+                keyBindingNames.put("", "Unbound");
+                List<String> keyBindingIds = new ArrayList<>();
+                keyBindingIds.add("");
+                for (KeyBinding keyBinding : MinecraftClient.getInstance().options.allKeys) {
+                    keyBindingNames.put(keyBinding.getTranslationKey(), keyBinding.getId());
+                    keyBindingIds.add(keyBinding.getTranslationKey());
+                }
+
+                for (Controller controller : ControllerManager.getControllerManager().getControllers()) {
+                    SDL2Controller sdlController = (SDL2Controller) controller;
+                    ConfigCategory category = builder.getOrCreateCategory(Text.of(sdlController.getName()));
+
+                    for (int i = 0; i < SDL.SDL_JoystickNumButtons(sdlController.joystick.getInstanceID()); i++) {
+                        String buttonName = SDL.SDL_GameControllerGetStringForButton(sdlController.joystick.getGameController(), i);
+                        if (buttonName != null && !buttonName.isEmpty()) {
+                            category.addEntry(entryBuilder.startStringDropdownMenu(Text.of(buttonName), config.getMapping(buttonName))
+                                    .setSelections(keyBindingIds)
+                                    .setSuggestionMode(false)
+                                    .setSaveConsumer(newValue -> config.setMapping(buttonName, keyBindingNames.get(newValue)))
+                                    .build());
+                        }
+                    }
+                }
+            }
+
+            builder.setSavingRunnable(config::save);
 
             return builder.build();
         };
-    }
-
-    private void addButtonMapping(ConfigCategory category, ConfigEntryBuilder entryBuilder, String button, Config config, String[] keyBindingIds) {
-        category.addEntry(entryBuilder.startSelector(Text.of(button + " Button"), keyBindingIds, config.getMapping(button))
-                .setDefaultValue("unbound")
-                .setSaveConsumer(newValue -> config.setMapping(button, newValue))
-                .build());
     }
 }

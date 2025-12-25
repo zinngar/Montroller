@@ -1,19 +1,27 @@
 package com.montroller;
 
+import com.badlogic.gdx.controllers.Controller;
+import com.montroller.mixin.MouseAccessor;
 import org.libsdl.SDL;
 import uk.co.electronstudio.sdl2gdx.SDL2Controller;
 import uk.co.electronstudio.sdl2gdx.SDL2ControllerManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.text.Text;
+
 import java.util.HashMap;
 import java.util.Map;
 
 public class ControllerManager {
-    private static final int REFRESH_RATE = 16; // in milliseconds
+    private static final int REFRESH_RATE = 16;
     private static final Map<String, KeyBinding> keyBindings = new HashMap<>();
     private static SDL2ControllerManager controllerManager;
     private static final Map<String, Boolean> wasConnected = new HashMap<>();
+
+    private static KeyBinding keyForward;
+    private static KeyBinding keyBack;
+    private static KeyBinding keyLeft;
+    private static KeyBinding keyRight;
 
     public static void start() {
         populateKeyBindings();
@@ -24,9 +32,10 @@ public class ControllerManager {
         new Thread(() -> {
             while (true) {
                 controllerManager.pollState();
-                for (SDL2Controller controller : controllerManager.getControllers()) {
-                    boolean isConnected = controller.isConnected();
-                    String controllerName = controller.getName();
+                for (Controller controller : controllerManager.getControllers()) {
+                    SDL2Controller sdlController = (SDL2Controller) controller;
+                    boolean isConnected = sdlController.isConnected();
+                    String controllerName = sdlController.getName();
 
                     if (isConnected && !wasConnected.getOrDefault(controllerName, false)) {
                         MinecraftClient.getInstance().execute(() -> {
@@ -39,23 +48,30 @@ public class ControllerManager {
                     }
                     wasConnected.put(controllerName, isConnected);
 
-                    // Handle button presses
-                    for (int i = 0; i < controller.getNumButtons(); i++) {
-                        boolean isPressed = controller.getButton(i);
-                        String action = config.getMapping(controller.getButtonName(i));
-                        if (action != null && !action.isEmpty()) {
-                            KeyBinding keyBinding = keyBindings.get(action);
-                            if (keyBinding != null) {
-                                MinecraftClient.getInstance().execute(() -> {
-                                    keyBinding.setPressed(isPressed);
-                                });
+                    if (isConnected) {
+                        // Handle button presses
+                        for (int i = 0; i < SDL.SDL_JoystickNumButtons(sdlController.joystick.getInstanceID()); i++) {
+                            boolean isPressed = sdlController.getButton(i);
+                            String buttonName = SDL.SDL_GameControllerGetStringForButton(sdlController.joystick.getGameController(), i);
+                            String action = config.getMapping(buttonName);
+
+                            if (action != null && !action.isEmpty()) {
+                                KeyBinding keyBinding = keyBindings.get(action);
+                                if (keyBinding != null) {
+                                    MinecraftClient.getInstance().execute(() -> {
+                                        keyBinding.setPressed(isPressed);
+                                    });
+                                }
                             }
                         }
-                    }
 
-                    // Handle gyro data
-                    if (config.isGyroEnabled()) {
-                        handleGyro(controller, config);
+                        // Handle axes
+                        handleAxes(sdlController, config);
+
+                        // Handle gyro
+                        if (config.isGyroEnabled()) {
+                            handleGyro(sdlController, config);
+                        }
                     }
                 }
 
@@ -73,20 +89,71 @@ public class ControllerManager {
         for (KeyBinding keyBinding : client.options.allKeys) {
             keyBindings.put(keyBinding.getId(), keyBinding);
         }
+        keyForward = client.options.forwardKey;
+        keyBack = client.options.backKey;
+        keyLeft = client.options.leftKey;
+        keyRight = client.options.rightKey;
+    }
+
+    private static void handleAxes(SDL2Controller controller, Config config) {
+        float leftX = controller.getAxis(SDL.SDL_CONTROLLER_AXIS_LEFTX);
+        float leftY = controller.getAxis(SDL.SDL_CONTROLLER_AXIS_LEFTY);
+        float rightX = controller.getAxis(SDL.SDL_CONTROLLER_AXIS_RIGHTX);
+        float rightY = controller.getAxis(SDL.SDL_CONTROLLER_AXIS_RIGHTY);
+
+        float leftDeadzone = config.getLeftStickDeadzone();
+        float rightDeadzone = config.getRightStickDeadzone();
+
+        // Left stick movement
+        MinecraftClient.getInstance().execute(() -> {
+            if (Math.abs(leftY) > leftDeadzone) {
+                keyForward.setPressed(leftY < -leftDeadzone);
+                keyBack.setPressed(leftY > leftDeadzone);
+            } else {
+                keyForward.setPressed(false);
+                keyBack.setPressed(false);
+            }
+            if (Math.abs(leftX) > leftDeadzone) {
+                keyLeft.setPressed(leftX < -leftDeadzone);
+                keyRight.setPressed(leftX > leftDeadzone);
+            } else {
+                keyLeft.setPressed(false);
+                keyRight.setPressed(false);
+            }
+        });
+
+        // Right stick look
+        if (Math.abs(rightX) > rightDeadzone || Math.abs(rightY) > rightDeadzone) {
+            float sensitivity = config.getRightStickSensitivity();
+            double dx = rightX * sensitivity * 10;
+            double dy = rightY * sensitivity * 10;
+
+            MinecraftClient.getInstance().execute(() -> {
+                MouseAccessor mouse = (MouseAccessor) MinecraftClient.getInstance().mouse;
+                mouse.invokeOnCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
+                        MinecraftClient.getInstance().mouse.getX() + dx,
+                        MinecraftClient.getInstance().mouse.getY() + dy);
+            });
+        }
     }
 
     private static void handleGyro(SDL2Controller controller, Config config) {
-        float[] gyroData = new float[3];
-        if (controller.getSensorData(gyroData)) {
-            float gyroX = gyroData[0];
-            float gyroY = gyroData[1];
-            float sensitivity = config.getGyroSensitivity();
+        long sensor = SDL.SDL_GameControllerGetSensor(controller.joystick.getGameController(), SDL.SDL_SENSOR_GYRO);
+        if (sensor != 0) {
+            SDL.SDL_SensorSetEnabled(sensor, true);
+            float[] gyroData = new float[3];
+            if (SDL.SDL_SensorGetData(sensor, gyroData, 3) == 0) {
+                float gyroX = gyroData[0];
+                float gyroY = gyroData[1];
+                float sensitivity = config.getGyroSensitivity();
 
-            MinecraftClient.getInstance().execute(() -> {
-                MinecraftClient.getInstance().mouse.onCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
-                        MinecraftClient.getInstance().mouse.getX() + gyroY * sensitivity * 10,
-                        MinecraftClient.getInstance().mouse.getY() + gyroX * sensitivity * 10);
-            });
+                MinecraftClient.getInstance().execute(() -> {
+                    MouseAccessor mouse = (MouseAccessor) MinecraftClient.getInstance().mouse;
+                    mouse.invokeOnCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
+                            MinecraftClient.getInstance().mouse.getX() + gyroY * sensitivity * 10,
+                            MinecraftClient.getInstance().mouse.getY() + gyroX * sensitivity * 10);
+                });
+            }
         }
     }
 

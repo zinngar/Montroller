@@ -2,6 +2,8 @@ package com.montroller;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import net.fabricmc.loader.api.FabricLoader;
+
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -10,34 +12,45 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Config {
-    private static final File configFile = new File("config/montroller.json");
-    private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private static Config instance;
-    private Map<String, String> keyMappings = new HashMap<>();
+    private final File configFile;
+    private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+
     private boolean gyroEnabled = false;
     private float gyroSensitivity = 1.0f;
+    private float leftStickDeadzone = 0.25f;
+    private float rightStickDeadzone = 0.25f;
+    private float rightStickSensitivity = 1.0f;
+    private Map<String, String> mappings = new HashMap<>();
 
-    private Config() {}
+    private Config() {
+        this.configFile = new File(FabricLoader.getInstance().getConfigDir().toFile(), "montroller.json");
+        load();
+    }
 
     public static Config getInstance() {
         if (instance == null) {
             instance = new Config();
-            instance.load();
         }
         return instance;
     }
 
-    private void load() {
+    public void load() {
         if (configFile.exists()) {
             try (FileReader reader = new FileReader(configFile)) {
-                Config config = gson.fromJson(reader, Config.class);
-                if (config != null) {
-                    this.keyMappings = config.keyMappings;
-                    this.gyroEnabled = config.gyroEnabled;
-                    this.gyroSensitivity = config.gyroSensitivity;
+                Config loadedConfig = gson.fromJson(reader, Config.class);
+                if (loadedConfig != null) {
+                    this.gyroEnabled = loadedConfig.gyroEnabled;
+                    this.gyroSensitivity = loadedConfig.gyroSensitivity;
+                    this.leftStickDeadzone = loadedConfig.leftStickDeadzone;
+                    this.rightStickDeadzone = loadedConfig.rightStickDeadzone;
+                    this.rightStickSensitivity = loadedConfig.rightStickSensitivity;
+                    if (loadedConfig.mappings != null) {
+                        this.mappings = loadedConfig.mappings;
+                    }
                 }
             } catch (IOException e) {
-                Montroller.LOGGER.error("Error loading config", e);
+                Montroller.LOGGER.error("Failed to load Montroller config", e);
             }
         }
     }
@@ -46,16 +59,8 @@ public class Config {
         try (FileWriter writer = new FileWriter(configFile)) {
             gson.toJson(this, writer);
         } catch (IOException e) {
-            Montroller.LOGGER.error("Error saving config", e);
+            Montroller.LOGGER.error("Failed to save Montroller config", e);
         }
-    }
-
-    public String getMapping(String button) {
-        return keyMappings.getOrDefault(button, "");
-    }
-
-    public void setMapping(String button, String action) {
-        keyMappings.put(button, action);
     }
 
     public boolean isGyroEnabled() {
@@ -72,5 +77,37 @@ public class Config {
 
     public void setGyroSensitivity(float gyroSensitivity) {
         this.gyroSensitivity = gyroSensitivity;
+    }
+
+    public float getLeftStickDeadzone() {
+        return leftStickDeadzone;
+    }
+
+    public void setLeftStickDeadzone(float leftStickDeadzone) {
+        this.leftStickDeadzone = leftStickDeadzone;
+    }
+
+    public float getRightStickDeadzone() {
+        return rightStickDeadzone;
+    }
+
+    public void setRightStickDeadzone(float rightStickDeadzone) {
+        this.rightStickDeadzone = rightStickDeadzone;
+    }
+
+    public float getRightStickSensitivity() {
+        return rightStickSensitivity;
+    }
+
+    public void setRightStickSensitivity(float rightStickSensitivity) {
+        this.rightStickSensitivity = rightStickSensitivity;
+    }
+
+    public String getMapping(String buttonName) {
+        return mappings.getOrDefault(buttonName, "");
+    }
+
+    public void setMapping(String buttonName, String action) {
+        mappings.put(buttonName, action);
     }
 }
