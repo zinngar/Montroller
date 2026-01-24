@@ -54,33 +54,32 @@ public class ModMenuIntegration implements ModMenuApi {
                     .build());
 
 
-            // Controller mappings
-            if (ControllerManager.getControllerManager() != null) {
-                Map<String, String> keyBindingNames = new HashMap<>();
-                keyBindingNames.put("", "Unbound");
-                List<String> keyBindingIds = new ArrayList<>();
-                keyBindingIds.add("");
-                for (KeyBinding keyBinding : MinecraftClient.getInstance().options.allKeys) {
-                    keyBindingNames.put(keyBinding.getTranslationKey(), keyBinding.getId());
-                    keyBindingIds.add(keyBinding.getTranslationKey());
-                }
+			// Controller mappings
+			if (ControllerManager.getControllerManager() != null) {
+				List<String> keyBindingIds = new ArrayList<>();
+				keyBindingIds.add("");
+				for (KeyBinding keyBinding : MinecraftClient.getInstance().options.allKeys) {
+					keyBindingIds.add(keyBinding.getId());
+				}
 
-                for (Controller controller : ControllerManager.getControllerManager().getControllers()) {
-                    SDL2Controller sdlController = (SDL2Controller) controller;
-                    ConfigCategory category = builder.getOrCreateCategory(Text.of(sdlController.getName()));
+				for (Controller controller : ControllerManager.getControllerManager().getControllers()) {
+					SDL2Controller sdlController = (SDL2Controller) controller;
+					ConfigCategory category = builder.getOrCreateCategory(Text.of(sdlController.getName()));
 
-                    for (int i = 0; i < SDL.SDL_JoystickNumButtons(sdlController.joystick.getInstanceID()); i++) {
-                        String buttonName = SDL.SDL_GameControllerGetStringForButton(sdlController.joystick.getGameController(), i);
-                        if (buttonName != null && !buttonName.isEmpty()) {
-                            category.addEntry(entryBuilder.startStringDropdownMenu(Text.of(buttonName), config.getMapping(buttonName))
-                                    .setSelections(keyBindingIds)
-                                    .setSuggestionMode(false)
-                                    .setSaveConsumer(newValue -> config.setMapping(buttonName, keyBindingNames.get(newValue)))
-                                    .build());
-                        }
-                    }
-                }
-            }
+					// We use GameController button names for better UX and consistent mapping
+					for (int i = 0; i < 15; i++) { // SDL_CONTROLLER_BUTTON_MAX
+						final String buttonName = SDL.SDL_GameControllerGetStringForButton(i);
+						if (buttonName != null && !buttonName.isEmpty()) {
+							category.addEntry(entryBuilder.startStringDropdownMenu(Text.of(buttonName.toUpperCase()), config.getMapping(buttonName),
+											value -> value.isEmpty() ? Text.of("Unbound") : Text.translatable(value))
+									.setSelections(keyBindingIds)
+									.setSuggestionMode(false)
+									.setSaveConsumer(newValue -> config.setMapping(buttonName, newValue))
+									.build());
+						}
+					}
+				}
+			}
 
             builder.setSavingRunnable(config::save);
 
