@@ -31,49 +31,59 @@ public class ControllerManager {
 
         new Thread(() -> {
             while (true) {
-                controllerManager.pollState();
-                for (Controller controller : controllerManager.getControllers()) {
-                    SDL2Controller sdlController = (SDL2Controller) controller;
-                    boolean isConnected = sdlController.isConnected();
-                    String controllerName = sdlController.getName();
+				try {
+					controllerManager.pollState();
+					for (Controller controller : controllerManager.getControllers()) {
+						SDL2Controller sdlController = (SDL2Controller) controller;
+						boolean isConnected = sdlController.isConnected();
+						String controllerName = sdlController.getName();
 
-                    if (isConnected && !wasConnected.getOrDefault(controllerName, false)) {
-                        MinecraftClient.getInstance().execute(() -> {
-                            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(controllerName + " connected"));
-                        });
-                    } else if (!isConnected && wasConnected.getOrDefault(controllerName, false)) {
-                        MinecraftClient.getInstance().execute(() -> {
-                            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(controllerName + " disconnected"));
-                        });
-                    }
-                    wasConnected.put(controllerName, isConnected);
+						if (isConnected && !wasConnected.getOrDefault(controllerName, false)) {
+							MinecraftClient.getInstance().execute(() -> {
+								MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(controllerName + " connected"));
+							});
+						} else if (!isConnected && wasConnected.getOrDefault(controllerName, false)) {
+							MinecraftClient.getInstance().execute(() -> {
+								MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(controllerName + " disconnected"));
+							});
+						}
+						wasConnected.put(controllerName, isConnected);
 
-                    if (isConnected) {
-                        // Handle button presses
-                        for (int i = 0; i < SDL.SDL_JoystickNumButtons(sdlController.joystick.getInstanceID()); i++) {
-                            boolean isPressed = sdlController.getButton(i);
-                            String buttonName = SDL.SDL_GameControllerGetStringForButton(sdlController.joystick.getGameController(), i);
-                            String action = config.getMapping(buttonName);
+						if (isConnected) {
+							// Handle button presses
+							// We iterate over GameController buttons to match the configuration UI
+							for (int i = 0; i < 15; i++) { // SDL_CONTROLLER_BUTTON_MAX
+								try {
+									boolean isPressed = sdlController.getButton(i);
+									String buttonName = SDL.SDL_GameControllerGetStringForButton(i);
+									if (buttonName == null || buttonName.isEmpty()) continue;
 
-                            if (action != null && !action.isEmpty()) {
-                                KeyBinding keyBinding = keyBindings.get(action);
-                                if (keyBinding != null) {
-                                    MinecraftClient.getInstance().execute(() -> {
-                                        keyBinding.setPressed(isPressed);
-                                    });
-                                }
-                            }
-                        }
+									String action = config.getMapping(buttonName);
+									if (action != null && !action.isEmpty()) {
+										KeyBinding keyBinding = keyBindings.get(action);
+										if (keyBinding != null) {
+											MinecraftClient.getInstance().execute(() -> {
+												keyBinding.setPressed(isPressed);
+											});
+										}
+									}
+								} catch (Exception e) {
+									// Ignore buttons that are not supported by the controller
+								}
+							}
 
-                        // Handle axes
-                        handleAxes(sdlController, config);
+							// Handle axes
+							handleAxes(sdlController, config);
 
-                        // Handle gyro
-                        if (config.isGyroEnabled()) {
-                            handleGyro(sdlController, config);
-                        }
-                    }
-                }
+							// Handle gyro
+							if (config.isGyroEnabled()) {
+								handleGyro(sdlController, config);
+							}
+						}
+					}
+				} catch (Exception e) {
+					Montroller.LOGGER.error("Error polling controllers", e);
+				}
 
                 try {
                     Thread.sleep(REFRESH_RATE);
@@ -137,25 +147,29 @@ public class ControllerManager {
         }
     }
 
-    private static void handleGyro(SDL2Controller controller, Config config) {
-        long sensor = SDL.SDL_GameControllerGetSensor(controller.joystick.getGameController(), SDL.SDL_SENSOR_GYRO);
-        if (sensor != 0) {
-            SDL.SDL_SensorSetEnabled(sensor, true);
-            float[] gyroData = new float[3];
-            if (SDL.SDL_SensorGetData(sensor, gyroData, 3) == 0) {
-                float gyroX = gyroData[0];
-                float gyroY = gyroData[1];
-                float sensitivity = config.getGyroSensitivity();
+	private static void handleGyro(SDL2Controller controller, Config config) {
+		// Gyro support via SDL_GameControllerGetSensor is currently unavailable
+		// because the sdl2gdx:1.0.5 library lacks the necessary JNI bindings.
+		/*
+		long sensor = SDL.SDL_GameControllerGetSensor(controller.joystick.getGameController(), SDL.SDL_SENSOR_GYRO);
+		if (sensor != 0) {
+			SDL.SDL_SensorSetEnabled(sensor, true);
+			float[] gyroData = new float[3];
+			if (SDL.SDL_SensorGetData(sensor, gyroData, 3) == 0) {
+				float gyroX = gyroData[0];
+				float gyroY = gyroData[1];
+				float sensitivity = config.getGyroSensitivity();
 
-                MinecraftClient.getInstance().execute(() -> {
-                    MouseAccessor mouse = (MouseAccessor) MinecraftClient.getInstance().mouse;
-                    mouse.invokeOnCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
-                            MinecraftClient.getInstance().mouse.getX() + gyroY * sensitivity * 10,
-                            MinecraftClient.getInstance().mouse.getY() + gyroX * sensitivity * 10);
-                });
-            }
-        }
-    }
+				MinecraftClient.getInstance().execute(() -> {
+					MouseAccessor mouse = (MouseAccessor) MinecraftClient.getInstance().mouse;
+					mouse.invokeOnCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
+							MinecraftClient.getInstance().mouse.getX() + gyroY * sensitivity * 10,
+							MinecraftClient.getInstance().mouse.getY() + gyroX * sensitivity * 10);
+				});
+			}
+		}
+		*/
+	}
 
     public static SDL2ControllerManager getControllerManager() {
         return controllerManager;
