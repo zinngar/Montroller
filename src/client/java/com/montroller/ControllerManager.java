@@ -26,6 +26,8 @@ public class ControllerManager {
     public static void start() {
         populateKeyBindings();
         Config config = Config.getInstance();
+        SDL.SDL_SetHint("SDL_JOYSTICK_HIDAPI_STEAM", "1");
+        SDL.SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_INPUT", "1");
         SDL.SDL_Init(SDL.SDL_INIT_GAMECONTROLLER | SDL.SDL_INIT_SENSOR);
         controllerManager = new SDL2ControllerManager();
 
@@ -52,7 +54,7 @@ public class ControllerManager {
 						if (isConnected) {
 							// Handle button presses
 							// We iterate over GameController buttons to match the configuration UI
-							for (int i = 0; i < 15; i++) { // SDL_CONTROLLER_BUTTON_MAX
+							for (int i = 0; i < SDL.SDL_CONTROLLER_BUTTON_MAX; i++) {
 								try {
 									boolean isPressed = sdlController.getButton(i);
 									String buttonName = SDL.SDL_GameControllerGetStringForButton(i);

@@ -67,7 +67,7 @@ public class ModMenuIntegration implements ModMenuApi {
 					ConfigCategory category = builder.getOrCreateCategory(Text.of(sdlController.getName()));
 
 					// We use GameController button names for better UX and consistent mapping
-					for (int i = 0; i < 15; i++) { // SDL_CONTROLLER_BUTTON_MAX
+					for (int i = 0; i < SDL.SDL_CONTROLLER_BUTTON_MAX; i++) {
 						final String buttonName = SDL.SDL_GameControllerGetStringForButton(i);
 						if (buttonName != null && !buttonName.isEmpty()) {
 							category.addEntry(entryBuilder.startStringDropdownMenu(Text.of(buttonName.toUpperCase()), config.getMapping(buttonName),
