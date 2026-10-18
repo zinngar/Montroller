@@ -1,6 +1,5 @@
 package com.montroller;
 
-import com.badlogic.gdx.controllers.Controller;
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
 import me.shedaniel.clothconfig2.api.ConfigBuilder;
@@ -9,13 +8,9 @@ import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
-import org.libsdl.SDL;
-import uk.co.electronstudio.sdl2gdx.SDL2Controller;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class ModMenuIntegration implements ModMenuApi {
 
@@ -54,32 +49,28 @@ public class ModMenuIntegration implements ModMenuApi {
                     .build());
 
 
-			// Controller mappings
-			if (ControllerManager.getControllerManager() != null) {
-				List<String> keyMappingIds = new ArrayList<>();
-				keyMappingIds.add("");
-				for (KeyMapping keyMapping : Minecraft.getInstance().options.keyMappings) {
-					keyMappingIds.add(keyMapping.getName());
-				}
+            List<String> connected = ControllerManager.connectedNames();
+            generalCategory.addEntry(entryBuilder.startTextDescription(Component.literal(connected.isEmpty()
+                    ? "No controller connected"
+                    : "Connected: " + String.join(", ", connected))).build());
 
-				for (Controller controller : ControllerManager.getControllerManager().getControllers()) {
-					SDL2Controller sdlController = (SDL2Controller) controller;
-					ConfigCategory category = builder.getOrCreateCategory(Component.literal(sdlController.getName()));
+            // Mappings are shared by every controller, keyed by SDL's button name.
+            List<String> actions = new ArrayList<>();
+            actions.add("");
+            actions.addAll(ControllerManager.VIRTUAL_ACTIONS);
+            for (KeyMapping keyMapping : Minecraft.getInstance().options.keyMappings) {
+                actions.add(keyMapping.getName());
+            }
 
-					// We use GameController button names for better UX and consistent mapping
-					for (int i = 0; i < SDL.SDL_CONTROLLER_BUTTON_MAX; i++) {
-						final String buttonName = SDL.SDL_GameControllerGetStringForButton(i);
-						if (buttonName != null && !buttonName.isEmpty()) {
-							category.addEntry(entryBuilder.startStringDropdownMenu(Component.literal(buttonName.toUpperCase()), config.getMapping(buttonName),
-											value -> value.isEmpty() ? Component.literal("Unbound") : Component.translatable(value))
-									.setSelections(keyMappingIds)
-									.setSuggestionMode(false)
-									.setSaveConsumer(newValue -> config.setMapping(buttonName, newValue))
-									.build());
-						}
-					}
-				}
-			}
+            ConfigCategory buttonsCategory = builder.getOrCreateCategory(Component.literal("Buttons"));
+            for (String inputName : ControllerManager.inputNames()) {
+                buttonsCategory.addEntry(entryBuilder.startStringDropdownMenu(Component.literal(inputName.toUpperCase()), config.getMapping(inputName),
+                                value -> value.isEmpty() ? Component.literal("Unbound") : Component.translatable(value))
+                        .setSelections(actions)
+                        .setSuggestionMode(false)
+                        .setSaveConsumer(newValue -> config.setMapping(inputName, newValue))
+                        .build());
+            }
 
             builder.setSavingRunnable(config::save);
 

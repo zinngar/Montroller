@@ -3,7 +3,8 @@
   "package": "com.montroller.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "MouseAccessor"
+    "KeyMappingAccessor",
+    "MouseHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -13,26 +13,46 @@ import java.util.Map;
 
 public class Config {
     private static Config instance;
-    private final File configFile;
-    private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    // Static so Gson neither serialises them nor needs reflective access to java.io.File.
+    private static final File configFile = new File(FabricLoader.getInstance().getConfigDir().toFile(), "montroller.json");
+    private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     private boolean gyroEnabled = false;
     private float gyroSensitivity = 1.0f;
     private float leftStickDeadzone = 0.25f;
     private float rightStickDeadzone = 0.25f;
     private float rightStickSensitivity = 1.0f;
-    private Map<String, String> mappings = new HashMap<>();
+    private Map<String, String> mappings = defaultMappings();
 
+    // Gson calls this constructor when loading, so it must not load the config itself.
     private Config() {
-        this.configFile = new File(FabricLoader.getInstance().getConfigDir().toFile(), "montroller.json");
-        load();
     }
 
     public static Config getInstance() {
         if (instance == null) {
             instance = new Config();
+            instance.load();
         }
         return instance;
+    }
+
+    private static Map<String, String> defaultMappings() {
+        Map<String, String> mappings = new HashMap<>();
+        mappings.put("a", "key.jump");
+        mappings.put("b", "key.drop");
+        mappings.put("x", "key.swapOffhand");
+        mappings.put("y", "key.inventory");
+        mappings.put("back", "key.playerlist");
+        mappings.put("start", "montroller.pause");
+        mappings.put("leftstick", "key.sprint");
+        mappings.put("rightstick", "key.sneak");
+        mappings.put("leftshoulder", "montroller.hotbar_prev");
+        mappings.put("rightshoulder", "montroller.hotbar_next");
+        mappings.put("dpup", "key.togglePerspective");
+        mappings.put("dpdown", "key.chat");
+        mappings.put("lefttrigger", "key.use");
+        mappings.put("righttrigger", "key.attack");
+        return mappings;
     }
 
     public void load() {
@@ -45,7 +65,7 @@ public class Config {
                     this.leftStickDeadzone = loadedConfig.leftStickDeadzone;
                     this.rightStickDeadzone = loadedConfig.rightStickDeadzone;
                     this.rightStickSensitivity = loadedConfig.rightStickSensitivity;
-                    if (loadedConfig.mappings != null) {
+                    if (loadedConfig.mappings != null && !loadedConfig.mappings.isEmpty()) {
                         this.mappings = loadedConfig.mappings;
                     }
                 }
