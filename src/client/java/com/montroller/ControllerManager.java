@@ -5,26 +5,26 @@ import com.montroller.mixin.MouseAccessor;
 import org.libsdl.SDL;
 import uk.co.electronstudio.sdl2gdx.SDL2Controller;
 import uk.co.electronstudio.sdl2gdx.SDL2ControllerManager;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.network.chat.Component;
 
 import java.util.HashMap;
 import java.util.Map;
 
 public class ControllerManager {
     private static final int REFRESH_RATE = 16;
-    private static final Map<String, KeyBinding> keyBindings = new HashMap<>();
+    private static final Map<String, KeyMapping> keyMappings = new HashMap<>();
     private static SDL2ControllerManager controllerManager;
     private static final Map<String, Boolean> wasConnected = new HashMap<>();
 
-    private static KeyBinding keyForward;
-    private static KeyBinding keyBack;
-    private static KeyBinding keyLeft;
-    private static KeyBinding keyRight;
+    private static KeyMapping keyForward;
+    private static KeyMapping keyBack;
+    private static KeyMapping keyLeft;
+    private static KeyMapping keyRight;
 
     public static void start() {
-        populateKeyBindings();
+        populateKeyMappings();
         Config config = Config.getInstance();
         SDL.SDL_SetHint("SDL_JOYSTICK_HIDAPI_STEAM", "1");
         SDL.SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_INPUT", "1");
@@ -41,12 +41,12 @@ public class ControllerManager {
 						String controllerName = sdlController.getName();
 
 						if (isConnected && !wasConnected.getOrDefault(controllerName, false)) {
-							MinecraftClient.getInstance().execute(() -> {
-								MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(controllerName + " connected"));
+							Minecraft.getInstance().execute(() -> {
+								Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(Component.literal(controllerName + " connected"));
 							});
 						} else if (!isConnected && wasConnected.getOrDefault(controllerName, false)) {
-							MinecraftClient.getInstance().execute(() -> {
-								MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(controllerName + " disconnected"));
+							Minecraft.getInstance().execute(() -> {
+								Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(Component.literal(controllerName + " disconnected"));
 							});
 						}
 						wasConnected.put(controllerName, isConnected);
@@ -62,10 +62,10 @@ public class ControllerManager {
 
 									String action = config.getMapping(buttonName);
 									if (action != null && !action.isEmpty()) {
-										KeyBinding keyBinding = keyBindings.get(action);
-										if (keyBinding != null) {
-											MinecraftClient.getInstance().execute(() -> {
-												keyBinding.setPressed(isPressed);
+										KeyMapping keyMapping = keyMappings.get(action);
+										if (keyMapping != null) {
+											Minecraft.getInstance().execute(() -> {
+												keyMapping.setDown(isPressed);
 											});
 										}
 									}
@@ -96,15 +96,15 @@ public class ControllerManager {
         }).start();
     }
 
-    private static void populateKeyBindings() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        for (KeyBinding keyBinding : client.options.allKeys) {
-            keyBindings.put(keyBinding.getId(), keyBinding);
+    private static void populateKeyMappings() {
+        Minecraft client = Minecraft.getInstance();
+        for (KeyMapping keyMapping : client.options.keyMappings) {
+            keyMappings.put(keyMapping.getName(), keyMapping);
         }
-        keyForward = client.options.forwardKey;
-        keyBack = client.options.backKey;
-        keyLeft = client.options.leftKey;
-        keyRight = client.options.rightKey;
+        keyForward = client.options.keyUp;
+        keyBack = client.options.keyDown;
+        keyLeft = client.options.keyLeft;
+        keyRight = client.options.keyRight;
     }
 
     private static void handleAxes(SDL2Controller controller, Config config) {
@@ -117,20 +117,20 @@ public class ControllerManager {
         float rightDeadzone = config.getRightStickDeadzone();
 
         // Left stick movement
-        MinecraftClient.getInstance().execute(() -> {
+        Minecraft.getInstance().execute(() -> {
             if (Math.abs(leftY) > leftDeadzone) {
-                keyForward.setPressed(leftY < -leftDeadzone);
-                keyBack.setPressed(leftY > leftDeadzone);
+                keyForward.setDown(leftY < -leftDeadzone);
+                keyBack.setDown(leftY > leftDeadzone);
             } else {
-                keyForward.setPressed(false);
-                keyBack.setPressed(false);
+                keyForward.setDown(false);
+                keyBack.setDown(false);
             }
             if (Math.abs(leftX) > leftDeadzone) {
-                keyLeft.setPressed(leftX < -leftDeadzone);
-                keyRight.setPressed(leftX > leftDeadzone);
+                keyLeft.setDown(leftX < -leftDeadzone);
+                keyRight.setDown(leftX > leftDeadzone);
             } else {
-                keyLeft.setPressed(false);
-                keyRight.setPressed(false);
+                keyLeft.setDown(false);
+                keyRight.setDown(false);
             }
         });
 
@@ -140,11 +140,14 @@ public class ControllerManager {
             double dx = rightX * sensitivity * 10;
             double dy = rightY * sensitivity * 10;
 
-            MinecraftClient.getInstance().execute(() -> {
-                MouseAccessor mouse = (MouseAccessor) MinecraftClient.getInstance().mouse;
-                mouse.invokeOnCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
-                        MinecraftClient.getInstance().mouse.getX() + dx,
-                        MinecraftClient.getInstance().mouse.getY() + dy);
+            Minecraft.getInstance().execute(() -> {
+                MouseAccessor mouse = (MouseAccessor) Minecraft.getInstance().mouseHandler;
+                // onMove reads the relative dx/dy while the cursor is grabbed (in-game camera)
+                // and the absolute x/y in menus, so feed it both.
+                mouse.invokeOnMove(Minecraft.getInstance().getWindow().handle(),
+                        Minecraft.getInstance().mouseHandler.xpos() + dx,
+                        Minecraft.getInstance().mouseHandler.ypos() + dy,
+                        dx, dy);
             });
         }
     }
@@ -162,11 +165,14 @@ public class ControllerManager {
 				float gyroY = gyroData[1];
 				float sensitivity = config.getGyroSensitivity();
 
-				MinecraftClient.getInstance().execute(() -> {
-					MouseAccessor mouse = (MouseAccessor) MinecraftClient.getInstance().mouse;
-					mouse.invokeOnCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
-							MinecraftClient.getInstance().mouse.getX() + gyroY * sensitivity * 10,
-							MinecraftClient.getInstance().mouse.getY() + gyroX * sensitivity * 10);
+				Minecraft.getInstance().execute(() -> {
+					MouseAccessor mouse = (MouseAccessor) Minecraft.getInstance().mouseHandler;
+					double dx = gyroY * sensitivity * 10;
+					double dy = gyroX * sensitivity * 10;
+					mouse.invokeOnMove(Minecraft.getInstance().getWindow().handle(),
+							Minecraft.getInstance().mouseHandler.xpos() + dx,
+							Minecraft.getInstance().mouseHandler.ypos() + dy,
+							dx, dy);
 				});
 			}
 		}
