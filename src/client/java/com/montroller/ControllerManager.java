@@ -1,179 +1,248 @@
 package com.montroller;
 
-import com.badlogic.gdx.controllers.Controller;
-import com.montroller.mixin.MouseAccessor;
-import org.libsdl.SDL;
-import uk.co.electronstudio.sdl2gdx.SDL2Controller;
-import uk.co.electronstudio.sdl2gdx.SDL2ControllerManager;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.text.Text;
+import com.montroller.mixin.KeyMappingAccessor;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
+import org.lwjgl.sdl.SDLGamepad;
+import org.lwjgl.sdl.SDLHints;
+import org.lwjgl.sdl.SDLInit;
+import org.lwjgl.sdl.SDLSensor;
+import org.lwjgl.sdl.SDLStdinc;
+import org.lwjgl.system.MemoryStack;
 
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-public class ControllerManager {
-    private static final int REFRESH_RATE = 16;
-    private static final Map<String, KeyBinding> keyBindings = new HashMap<>();
-    private static SDL2ControllerManager controllerManager;
-    private static final Map<String, Boolean> wasConnected = new HashMap<>();
+/**
+ * Reads gamepads through the SDL3 that Minecraft itself ships (via LWJGL), so it runs on
+ * every platform the game does. All SDL calls happen on the render thread, which is the
+ * thread Minecraft pumps SDL events on.
+ */
+public final class ControllerManager {
+    public static final String HOTBAR_NEXT = "montroller.hotbar_next";
+    public static final String HOTBAR_PREV = "montroller.hotbar_prev";
+    public static final String PAUSE = "montroller.pause";
+    public static final List<String> VIRTUAL_ACTIONS = List.of(HOTBAR_NEXT, HOTBAR_PREV, PAUSE);
 
-    private static KeyBinding keyForward;
-    private static KeyBinding keyBack;
-    private static KeyBinding keyLeft;
-    private static KeyBinding keyRight;
+    public static final String LEFT_TRIGGER = "lefttrigger";
+    public static final String RIGHT_TRIGGER = "righttrigger";
+
+    private static final float AXIS_MAX = 32767f;
+    private static final float TRIGGER_THRESHOLD = 0.5f;
+    /** Mouse pixels per second at full right-stick deflection and sensitivity 1. */
+    private static final double STICK_LOOK_SPEED = 625;
+    /** Mouse pixels per radian of controller rotation; about 1:1 at default mouse sensitivity. */
+    private static final double GYRO_PIXELS_PER_RADIAN = 380;
+
+    private static final Map<Integer, Long> gamepads = new LinkedHashMap<>(); // joystick id -> SDL_Gamepad*
+    private static final Map<String, KeyMapping> keyMappings = new HashMap<>();
+    private static Set<String> activeActions = new HashSet<>();
+    private static boolean initialized;
+    private static long lastLookNanos;
+
+    private ControllerManager() {}
 
     public static void start() {
-        populateKeyBindings();
+        SDLHints.SDL_SetHint(SDLHints.SDL_HINT_JOYSTICK_HIDAPI_STEAM, "1");
+        SDLHints.SDL_SetHint(SDLHints.SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+        if (!SDLInit.SDL_InitSubSystem(SDLInit.SDL_INIT_GAMEPAD | SDLInit.SDL_INIT_SENSOR)) {
+            Montroller.LOGGER.error("Failed to initialise SDL gamepad support");
+            return;
+        }
+        initialized = true;
+        Montroller.LOGGER.info("Controller support started");
+
+        for (KeyMapping keyMapping : Minecraft.getInstance().options.keyMappings) {
+            keyMappings.put(keyMapping.getName(), keyMapping);
+        }
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> tick());
+    }
+
+    /** Names of the buttons and triggers that can be mapped, in display order. */
+    public static List<String> inputNames() {
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < SDLGamepad.SDL_GAMEPAD_BUTTON_COUNT; i++) {
+            String name = SDLGamepad.SDL_GetGamepadStringForButton(i);
+            if (name != null && !name.isEmpty()) names.add(name);
+        }
+        names.add(LEFT_TRIGGER);
+        names.add(RIGHT_TRIGGER);
+        return names;
+    }
+
+    public static List<String> connectedNames() {
+        List<String> names = new ArrayList<>();
+        for (long gamepad : gamepads.values()) {
+            names.add(nameOf(gamepad));
+        }
+        return names;
+    }
+
+    private static void tick() {
+        if (!initialized) return;
+        refreshGamepads();
+
         Config config = Config.getInstance();
-        SDL.SDL_SetHint("SDL_JOYSTICK_HIDAPI_STEAM", "1");
-        SDL.SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_INPUT", "1");
-        SDL.SDL_Init(SDL.SDL_INIT_GAMECONTROLLER | SDL.SDL_INIT_SENSOR);
-        controllerManager = new SDL2ControllerManager();
+        Minecraft client = Minecraft.getInstance();
+        Set<String> nowActive = new HashSet<>();
 
-        new Thread(() -> {
-            while (true) {
-				try {
-					controllerManager.pollState();
-					for (Controller controller : controllerManager.getControllers()) {
-						SDL2Controller sdlController = (SDL2Controller) controller;
-						boolean isConnected = sdlController.isConnected();
-						String controllerName = sdlController.getName();
+        for (long gamepad : gamepads.values()) {
+            SDLGamepad.SDL_SetGamepadSensorEnabled(gamepad, SDLSensor.SDL_SENSOR_GYRO, config.isGyroEnabled());
 
-						if (isConnected && !wasConnected.getOrDefault(controllerName, false)) {
-							MinecraftClient.getInstance().execute(() -> {
-								MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(controllerName + " connected"));
-							});
-						} else if (!isConnected && wasConnected.getOrDefault(controllerName, false)) {
-							MinecraftClient.getInstance().execute(() -> {
-								MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(controllerName + " disconnected"));
-							});
-						}
-						wasConnected.put(controllerName, isConnected);
-
-						if (isConnected) {
-							// Handle button presses
-							// We iterate over GameController buttons to match the configuration UI
-							for (int i = 0; i < SDL.SDL_CONTROLLER_BUTTON_MAX; i++) {
-								try {
-									boolean isPressed = sdlController.getButton(i);
-									String buttonName = SDL.SDL_GameControllerGetStringForButton(i);
-									if (buttonName == null || buttonName.isEmpty()) continue;
-
-									String action = config.getMapping(buttonName);
-									if (action != null && !action.isEmpty()) {
-										KeyBinding keyBinding = keyBindings.get(action);
-										if (keyBinding != null) {
-											MinecraftClient.getInstance().execute(() -> {
-												keyBinding.setPressed(isPressed);
-											});
-										}
-									}
-								} catch (Exception e) {
-									// Ignore buttons that are not supported by the controller
-								}
-							}
-
-							// Handle axes
-							handleAxes(sdlController, config);
-
-							// Handle gyro
-							if (config.isGyroEnabled()) {
-								handleGyro(sdlController, config);
-							}
-						}
-					}
-				} catch (Exception e) {
-					Montroller.LOGGER.error("Error polling controllers", e);
-				}
-
-                try {
-                    Thread.sleep(REFRESH_RATE);
-                } catch (InterruptedException e) {
-                    Montroller.LOGGER.error("Error in controller detection thread", e);
+            for (int i = 0; i < SDLGamepad.SDL_GAMEPAD_BUTTON_COUNT; i++) {
+                if (SDLGamepad.SDL_GetGamepadButton(gamepad, i)) {
+                    addMapped(nowActive, config, SDLGamepad.SDL_GetGamepadStringForButton(i));
                 }
             }
-        }).start();
-    }
+            if (axis(gamepad, SDLGamepad.SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > TRIGGER_THRESHOLD) {
+                addMapped(nowActive, config, LEFT_TRIGGER);
+            }
+            if (axis(gamepad, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > TRIGGER_THRESHOLD) {
+                addMapped(nowActive, config, RIGHT_TRIGGER);
+            }
 
-    private static void populateKeyBindings() {
-        MinecraftClient client = MinecraftClient.getInstance();
-        for (KeyBinding keyBinding : client.options.allKeys) {
-            keyBindings.put(keyBinding.getId(), keyBinding);
+            float leftX = axis(gamepad, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTX);
+            float leftY = axis(gamepad, SDLGamepad.SDL_GAMEPAD_AXIS_LEFTY);
+            float deadzone = config.getLeftStickDeadzone();
+            if (leftY < -deadzone) nowActive.add(client.options.keyUp.getName());
+            if (leftY > deadzone) nowActive.add(client.options.keyDown.getName());
+            if (leftX < -deadzone) nowActive.add(client.options.keyLeft.getName());
+            if (leftX > deadzone) nowActive.add(client.options.keyRight.getName());
         }
-        keyForward = client.options.forwardKey;
-        keyBack = client.options.backKey;
-        keyLeft = client.options.leftKey;
-        keyRight = client.options.rightKey;
+
+        // Only touch key mappings on a change, so the keyboard keeps working alongside the controller.
+        for (String action : nowActive) {
+            if (!activeActions.contains(action)) press(client, action);
+        }
+        for (String action : activeActions) {
+            if (!nowActive.contains(action)) {
+                KeyMapping keyMapping = keyMappings.get(action);
+                if (keyMapping != null) keyMapping.setDown(false);
+            }
+        }
+        activeActions = nowActive;
     }
 
-    private static void handleAxes(SDL2Controller controller, Config config) {
-        float leftX = controller.getAxis(SDL.SDL_CONTROLLER_AXIS_LEFTX);
-        float leftY = controller.getAxis(SDL.SDL_CONTROLLER_AXIS_LEFTY);
-        float rightX = controller.getAxis(SDL.SDL_CONTROLLER_AXIS_RIGHTX);
-        float rightY = controller.getAxis(SDL.SDL_CONTROLLER_AXIS_RIGHTY);
+    private static void addMapped(Set<String> actions, Config config, String inputName) {
+        if (inputName == null) return;
+        String action = config.getMapping(inputName);
+        if (!action.isEmpty()) actions.add(action);
+    }
 
-        float leftDeadzone = config.getLeftStickDeadzone();
-        float rightDeadzone = config.getRightStickDeadzone();
+    private static void press(Minecraft client, String action) {
+        switch (action) {
+            case HOTBAR_NEXT -> scrollHotbar(client, 1);
+            case HOTBAR_PREV -> scrollHotbar(client, -1);
+            case PAUSE -> {
+                if (client.gui.screen() == null) client.pauseGame(false);
+            }
+            default -> {
+                KeyMapping keyMapping = keyMappings.get(action);
+                if (keyMapping != null) {
+                    keyMapping.setDown(true);
+                    // setDown alone doesn't register a click, which attack, inventory, drop etc. rely on.
+                    KeyMappingAccessor accessor = (KeyMappingAccessor) keyMapping;
+                    accessor.setClickCount(accessor.getClickCount() + 1);
+                }
+            }
+        }
+    }
 
-        // Left stick movement
-        MinecraftClient.getInstance().execute(() -> {
-            if (Math.abs(leftY) > leftDeadzone) {
-                keyForward.setPressed(leftY < -leftDeadzone);
-                keyBack.setPressed(leftY > leftDeadzone);
-            } else {
-                keyForward.setPressed(false);
-                keyBack.setPressed(false);
+    private static void scrollHotbar(Minecraft client, int direction) {
+        if (client.player == null || client.gui.screen() != null) return;
+        int slot = Math.floorMod(client.player.getInventory().getSelectedSlot() + direction, 9);
+        client.player.getInventory().setSelectedSlot(slot);
+    }
+
+    private static void refreshGamepads() {
+        Set<Integer> present = new HashSet<>();
+        IntBuffer ids = SDLGamepad.SDL_GetGamepads();
+        if (ids != null) {
+            try {
+                // Absolute reads: SDL_free uses the buffer's current position as the address,
+                // so advancing it with relative get() frees a bad pointer and aborts the game.
+                for (int i = 0; i < ids.limit(); i++) present.add(ids.get(i));
+            } finally {
+                SDLStdinc.SDL_free(ids);
             }
-            if (Math.abs(leftX) > leftDeadzone) {
-                keyLeft.setPressed(leftX < -leftDeadzone);
-                keyRight.setPressed(leftX > leftDeadzone);
-            } else {
-                keyLeft.setPressed(false);
-                keyRight.setPressed(false);
-            }
+        }
+
+        gamepads.entrySet().removeIf(entry -> {
+            if (present.contains(entry.getKey()) && SDLGamepad.SDL_GamepadConnected(entry.getValue())) return false;
+            announce(nameOf(entry.getValue()) + " disconnected");
+            SDLGamepad.SDL_CloseGamepad(entry.getValue());
+            return true;
         });
 
-        // Right stick look
-        if (Math.abs(rightX) > rightDeadzone || Math.abs(rightY) > rightDeadzone) {
-            float sensitivity = config.getRightStickSensitivity();
-            double dx = rightX * sensitivity * 10;
-            double dy = rightY * sensitivity * 10;
-
-            MinecraftClient.getInstance().execute(() -> {
-                MouseAccessor mouse = (MouseAccessor) MinecraftClient.getInstance().mouse;
-                mouse.invokeOnCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
-                        MinecraftClient.getInstance().mouse.getX() + dx,
-                        MinecraftClient.getInstance().mouse.getY() + dy);
-            });
+        for (int id : present) {
+            if (gamepads.containsKey(id)) continue;
+            long gamepad = SDLGamepad.SDL_OpenGamepad(id);
+            if (gamepad == 0) continue;
+            gamepads.put(id, gamepad);
+            announce(nameOf(gamepad) + " connected");
         }
     }
 
-	private static void handleGyro(SDL2Controller controller, Config config) {
-		// Gyro support via SDL_GameControllerGetSensor is currently unavailable
-		// because the sdl2gdx:1.0.5 library lacks the necessary JNI bindings.
-		/*
-		long sensor = SDL.SDL_GameControllerGetSensor(controller.joystick.getGameController(), SDL.SDL_SENSOR_GYRO);
-		if (sensor != 0) {
-			SDL.SDL_SensorSetEnabled(sensor, true);
-			float[] gyroData = new float[3];
-			if (SDL.SDL_SensorGetData(sensor, gyroData, 3) == 0) {
-				float gyroX = gyroData[0];
-				float gyroY = gyroData[1];
-				float sensitivity = config.getGyroSensitivity();
+    /**
+     * Camera movement for this frame, as mouse pixels. Called every frame from the mouse handler
+     * so looking stays smooth at any frame rate.
+     */
+    public static double[] consumeLook() {
+        long now = System.nanoTime();
+        double seconds = lastLookNanos == 0 ? 0 : Math.min((now - lastLookNanos) / 1e9, 0.1);
+        lastLookNanos = now;
+        double dx = 0;
+        double dy = 0;
+        if (!initialized || seconds == 0) return new double[] {dx, dy};
 
-				MinecraftClient.getInstance().execute(() -> {
-					MouseAccessor mouse = (MouseAccessor) MinecraftClient.getInstance().mouse;
-					mouse.invokeOnCursorPos(MinecraftClient.getInstance().getWindow().getHandle(),
-							MinecraftClient.getInstance().mouse.getX() + gyroY * sensitivity * 10,
-							MinecraftClient.getInstance().mouse.getY() + gyroX * sensitivity * 10);
-				});
-			}
-		}
-		*/
-	}
+        Config config = Config.getInstance();
+        for (long gamepad : gamepads.values()) {
+            float x = axis(gamepad, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHTX);
+            float y = axis(gamepad, SDLGamepad.SDL_GAMEPAD_AXIS_RIGHTY);
+            double magnitude = Math.hypot(x, y);
+            float deadzone = config.getRightStickDeadzone();
+            if (magnitude > deadzone) {
+                double scale = (Math.min(magnitude, 1) - deadzone) / (1 - deadzone) / magnitude;
+                double speed = STICK_LOOK_SPEED * config.getRightStickSensitivity() * seconds;
+                dx += x * scale * speed;
+                dy += y * scale * speed;
+            }
 
-    public static SDL2ControllerManager getControllerManager() {
-        return controllerManager;
+            if (config.isGyroEnabled() && SDLGamepad.SDL_GamepadHasSensor(gamepad, SDLSensor.SDL_SENSOR_GYRO)) {
+                try (MemoryStack stack = MemoryStack.stackPush()) {
+                    FloatBuffer gyro = stack.mallocFloat(3); // pitch, yaw, roll in rad/s
+                    if (SDLGamepad.SDL_GetGamepadSensorData(gamepad, SDLSensor.SDL_SENSOR_GYRO, gyro)) {
+                        double speed = GYRO_PIXELS_PER_RADIAN * config.getGyroSensitivity() * seconds;
+                        dx -= gyro.get(1) * speed;
+                        dy -= gyro.get(0) * speed;
+                    }
+                }
+            }
+        }
+        return new double[] {dx, dy};
+    }
+
+    private static float axis(long gamepad, int axis) {
+        return SDLGamepad.SDL_GetGamepadAxis(gamepad, axis) / AXIS_MAX;
+    }
+
+    private static String nameOf(long gamepad) {
+        String name = SDLGamepad.SDL_GetGamepadName(gamepad);
+        return name == null || name.isEmpty() ? "Controller" : name;
+    }
+
+    private static void announce(String message) {
+        Montroller.LOGGER.info(message);
+        Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(Component.literal(message));
     }
 }

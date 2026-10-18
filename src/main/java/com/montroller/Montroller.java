@@ -1,7 +1,6 @@
 package com.montroller;
 
 import net.fabricmc.api.ModInitializer;
-import org.libsdl.SDL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,10 +14,7 @@ public class Montroller implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		// This code runs as soon as Minecraft is in a mod-load-ready state.
-		// However, some things (like resources) may still be uninitialized.
-		// Proceed with mild caution.
-
-		Runtime.getRuntime().addShutdownHook(new Thread(SDL::SDL_Quit));
+		// Controller support is client-only and starts from MontrollerClient.
+		// SDL belongs to Minecraft, which shuts it down on exit.
 	}
 }
