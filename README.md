@@ -46,7 +46,7 @@ A universal controller mod for Minecraft (Fabric).
 ## Installation
 
 1.  Install [Fabric Loader](https://fabricmc.net/use/) for Minecraft 26.3.
-2.  Download `montroller-1.2.0.jar` from the [Releases](https://github.com/zinngar/Montroller/releases) page.
+2.  Download `montroller-1.2.1.jar` from the [Releases](https://github.com/zinngar/Montroller/releases) page.
 3.  Put it in your `.minecraft/mods` folder along with Fabric API (and Cloth Config + Mod Menu if you want the settings screen).
 4.  Launch the game, plug in a controller, and set up your button mappings under **Mods → Montroller → Configure**.
 
@@ -66,6 +66,7 @@ The jar is written to `build/libs/`.
 
 ## Version history
 
+*   **1.2.1** – Fixed a crash on startup when a controller is connected.
 *   **1.2.0** – Works on all platforms including Apple Silicon (switched to Minecraft's built-in SDL3). Added triggers, hotbar switching, pause, gyro aiming and a default layout. Fixed keyboard conflicts, button presses not registering for attack/inventory/drop, and a crash when loading saved settings.
 *   **1.1.0** – Updated to Minecraft 26.3. Fixed a crash on startup.
 *   **1.0.0** – First release, for Minecraft 1.21.10.

@@ -169,7 +169,9 @@ public final class ControllerManager {
         IntBuffer ids = SDLGamepad.SDL_GetGamepads();
         if (ids != null) {
             try {
-                while (ids.hasRemaining()) present.add(ids.get());
+                // Absolute reads: SDL_free uses the buffer's current position as the address,
+                // so advancing it with relative get() frees a bad pointer and aborts the game.
+                for (int i = 0; i < ids.limit(); i++) present.add(ids.get(i));
             } finally {
                 SDLStdinc.SDL_free(ids);
             }
