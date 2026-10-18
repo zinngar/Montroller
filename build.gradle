@@ -41,7 +41,11 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
 	// Controller Dependencies
+    // Bundled into the mod jar (jar-in-jar) so it works outside the dev environment
     implementation 'com.github.electronstudio:sdl2gdx:1.0.5'
+    include 'com.github.electronstudio:sdl2gdx:1.0.5'
+    include 'com.badlogicgames.gdx:gdx:1.9.9'
+    include 'com.badlogicgames.gdx:gdx-controllers:1.9.9'
 	implementation "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
     implementation "com.terraformersmc:modmenu:${project.modmenu_version}"
 	implementation 'com.google.code.gson:gson:2.10.1'
